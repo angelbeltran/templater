@@ -90,6 +90,8 @@ import (
 	"maps"
 	"os"
 	"path"
+
+	"github.com/angelbeltran/templater/funcs"
 )
 
 type Templater struct {
@@ -106,7 +108,7 @@ func NewTemplater(templatesDir string, funcs func() template.FuncMap) *Templater
 
 // ExecutePage is basically ExecuteComponentBody except returns html wrapped up in the layout page.
 func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
-	props, err := NewKVSProps(kvs...)
+	props, err := funcs.NewKVSProps(kvs...)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +157,7 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 // It expects an even number of kvs (allows for zero).
 // They are treated as key-value pairs and passed in a map[string]any to the template.
 func (tm *Templater) ExecuteComponentBody(name string, kvs ...any) ([]byte, error) {
-	props, err := NewKVSProps(kvs...)
+	props, err := funcs.NewKVSProps(kvs...)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +180,7 @@ func (tm *Templater) ExecuteComponentBody(name string, kvs ...any) ([]byte, erro
 }
 
 func (tm *Templater) executeComponentHead(executeSubComponentHead componentExecutorFunc, name string, kvs ...any) ([]byte, error) {
-	props, err := NewKVSProps(kvs...)
+	props, err := funcs.NewKVSProps(kvs...)
 	if err != nil {
 		return nil, err
 	}
@@ -280,31 +282,9 @@ func (tm *Templater) buildComponentHeadFuncMap(componentHead componentExecutorFu
 }
 
 func (tm *Templater) commonFuncs() template.FuncMap {
-	funcs := template.FuncMap(map[string]any{
-		// template execution
-		"props": NewKVSProps,
-	})
+	funcs := funcs.DefaultMap()
 
 	maps.Copy(funcs, tm.funcs())
 
 	return funcs
-}
-
-// NewKVSProps is the implementation of the `props` template function.
-func NewKVSProps(args ...any) (map[string]any, error) {
-	if len(args)%2 == 1 {
-		return nil, fmt.Errorf("the props function expects an even number of arguments, key-value pairs: received %d arguments", len(args))
-	}
-
-	props := make(map[string]any, len(args)/2)
-	for i := 0; i < len(args); i += 2 {
-		k, ok := args[i].(string)
-		if !ok {
-			return nil, fmt.Errorf("props expected odd arguments to be key strings: argument %d was a %T", i+1, args[i])
-		}
-
-		props[k] = args[i+1]
-	}
-
-	return props, nil
 }
