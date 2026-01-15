@@ -76,7 +76,7 @@ type (
 	}
 
 	Config struct {
-		Funcs   func() template.FuncMap
+		Funcs   func(name string, props map[string]any) template.FuncMap
 		Dirs    DirsConfig
 		FileExt string
 	}
@@ -96,10 +96,10 @@ func (tm *Templater) With(cfg Config) *Templater {
 
 func (tm *Templater) WithFuncs(m template.FuncMap) *Templater {
 	cpy := *tm
-	cpy.cfg.Funcs = func() template.FuncMap {
+	cpy.cfg.Funcs = func(name string, props map[string]any) template.FuncMap {
 		dst := make(template.FuncMap)
 		maps.Copy(dst, m)
-		maps.Copy(dst, tm.cfg.Funcs())
+		maps.Copy(dst, tm.cfg.Funcs(name, props))
 		return dst
 	}
 	return &cpy
@@ -144,7 +144,7 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 	layoutFilename := "layout" + tm.cfg.FileExt
 
 	layout, err := template.New(layoutFilename).
-		Funcs(tm.buildFuncMap()).
+		Funcs(tm.buildFuncMap(name, props)).
 		ParseFiles(path.Join(tm.cfg.Dirs.Base, layoutFilename))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse layout html file: %w", err)
@@ -180,7 +180,7 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 	filename := name + tm.cfg.FileExt
 
 	t, err := template.New(name).
-		Funcs(tm.buildFuncMap()).
+		Funcs(tm.buildFuncMap(name, props)).
 		ParseFiles(path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Components, filename))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse component %s: %w", name, err)
@@ -194,7 +194,7 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (tm *Templater) buildFuncMap() template.FuncMap {
+func (tm *Templater) buildFuncMap(name string, props map[string]any) template.FuncMap {
 	m := template.FuncMap(map[string]any{
 		// template execution
 		"component": func(name string, props ...any) (template.HTML, error) {
@@ -203,8 +203,8 @@ func (tm *Templater) buildFuncMap() template.FuncMap {
 		},
 	})
 
-	maps.Copy(m, funcs.DefaultMap())
-	maps.Copy(m, tm.cfg.Funcs())
+	maps.Copy(m, funcs.DefaultMap(name, props))
+	maps.Copy(m, tm.cfg.Funcs(name, props))
 
 	return m
 }
