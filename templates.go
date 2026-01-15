@@ -94,6 +94,17 @@ func (tm *Templater) With(cfg Config) *Templater {
 	return tm
 }
 
+func (tm *Templater) WithFuncs(m template.FuncMap) *Templater {
+	cpy := *tm
+	cpy.cfg.Funcs = func() template.FuncMap {
+		dst := make(template.FuncMap)
+		maps.Copy(dst, m)
+		maps.Copy(dst, tm.cfg.Funcs())
+		return dst
+	}
+	return &cpy
+}
+
 func (c *Config) setDefaultsToZeroFields() {
 	if c.Funcs == nil {
 		c.Funcs = funcs.DefaultMap
