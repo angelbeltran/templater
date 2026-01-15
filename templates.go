@@ -1,6 +1,6 @@
 // The Templater type is the core of the package.
 // To use this package, a directory holdings all templates must exist.
-// That directory, must hold the following structure.
+// That directory, will typically hold the following structure, but is configurable.
 //   - /layout.html.tmpl
 //   - /pages/
 //   - /page_heads/
@@ -24,7 +24,7 @@
 //
 // </html>
 //
-// All other such templates must have the file extension .html.tmpl.
+// All templates must have the file extension .html.tmpl, unless configured otherwise.
 //
 // The /pages/ directory holds all templates serving the "body"
 // of standalone webpages.
@@ -37,14 +37,14 @@
 // The /page_heads/ and /component_heads/ directories hold html intended to
 // be placed in the <head> of the page alongside the respective page or
 // component in /pages/ or /components/, respectively.
-// When compiling a page via Templater.ExecutePage, the need not be a
+// When compiling a page via Templater.ExecutePage, there need not be a
 // corresponding file in /page_heads/ - it is optional.
 //
-// To use a component in a page body or other component body, use the
+// To use a component in a page or other component, use the
 // `componentBody` function.
 // It's provided by Templater.ExecutePage and Templater.ExecuteComponentBody.
 // It requires the name of the component - name of the file in
-// /components/ without the .html.tmpl file extension.
+// /components/ minus the .html.tmpl file extension.
 // It accepts a sequence of key-value pairs describing the "props" provided
 // to the component, the odd arguments being key strings, and the even
 // arguments being the values.
@@ -94,15 +94,62 @@ import (
 	"github.com/angelbeltran/templater/funcs"
 )
 
-type Templater struct {
-	templatesDir string
-	funcs        func() template.FuncMap
+type (
+	Templater struct {
+		cfg Config
+	}
+
+	Config struct {
+		Funcs   func() template.FuncMap
+		Dirs    DirsConfig
+		FileExt string
+	}
+
+	DirsConfig struct {
+		Base           string
+		Pages          string
+		Components     string
+		PageHeads      string
+		ComponentHeads string
+	}
+)
+
+func (tm *Templater) With(cfg Config) *Templater {
+	tm.cfg = cfg
+	tm.cfg.setDefaultsToZeroFields()
+	return tm
 }
 
-func NewTemplater(templatesDir string, funcs func() template.FuncMap) *Templater {
-	return &Templater{
-		templatesDir: templatesDir,
-		funcs:        funcs,
+func (c *Config) setDefaultsToZeroFields() {
+	if c.Funcs == nil {
+		c.Funcs = funcs.DefaultMap
+	}
+
+	c.Dirs.setDefaultsToZeroFields()
+
+	if c.FileExt == "" {
+		c.FileExt = ".html.tmpl"
+	}
+	if c.FileExt[0] != '.' {
+		c.FileExt = "." + c.FileExt
+	}
+}
+
+func (c *DirsConfig) setDefaultsToZeroFields() {
+	if c.Base == "" {
+		c.Base = "templates"
+	}
+	if c.Pages == "" {
+		c.Pages = "pages"
+	}
+	if c.Components == "" {
+		c.Components = "components"
+	}
+	if c.PageHeads == "" {
+		c.PageHeads = "page_heads"
+	}
+	if c.ComponentHeads == "" {
+		c.ComponentHeads = "component_heads"
 	}
 }
 
@@ -113,18 +160,20 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 		return nil, err
 	}
 
-	const layoutFilename = "layout.html.tmpl"
+	cfg := tm.cfg
+
+	layoutFilename := "layout" + cfg.FileExt
 
 	layout, err := template.New(layoutFilename).
 		Funcs(tm.buildPageFuncMap()).
-		ParseFiles(path.Join(tm.templatesDir, layoutFilename))
+		ParseFiles(path.Join(tm.cfg.Dirs.Base, layoutFilename))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse layout html file: %w", err)
 	}
 
 	// define "head" template
 
-	if b, err := os.ReadFile(path.Join(tm.templatesDir, "page_heads", name+".html.tmpl")); err != nil {
+	if b, err := os.ReadFile(path.Join(tm.cfg.Dirs.Base, "page_heads", name+cfg.FileExt)); err != nil {
 		// head template isn't required to exist, only body template.
 		if !errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("failed to read page head html file: %w", err)
@@ -137,7 +186,7 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 
 	// define "body" template
 
-	if b, err := os.ReadFile(path.Join(tm.templatesDir, "pages", name+".html.tmpl")); err != nil {
+	if b, err := os.ReadFile(path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Pages, name+cfg.FileExt)); err != nil {
 		return nil, fmt.Errorf("failed to read page body html file: %w", err)
 	} else {
 		if _, err := layout.New("body").Parse(string(b)); err != nil {
@@ -162,11 +211,11 @@ func (tm *Templater) ExecuteComponentBody(name string, kvs ...any) ([]byte, erro
 		return nil, err
 	}
 
-	filename := name + ".html.tmpl"
+	filename := name + tm.cfg.FileExt
 
 	t, err := template.New(name).
 		Funcs(tm.buildComponentBodyFuncMap()).
-		ParseFiles(path.Join(tm.templatesDir, "components", filename))
+		ParseFiles(path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Components, filename))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse component %s: %w", name, err)
 	}
@@ -185,11 +234,11 @@ func (tm *Templater) executeComponentHead(executeSubComponentHead componentExecu
 		return nil, err
 	}
 
-	filename := name + ".html.tmpl"
+	filename := name + tm.cfg.FileExt
 
 	t, err := template.New(name).
 		Funcs(tm.buildComponentHeadFuncMap(executeSubComponentHead)).
-		ParseFiles(path.Join(tm.templatesDir, "component_heads", filename))
+		ParseFiles(path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.ComponentHeads, filename))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
@@ -284,7 +333,9 @@ func (tm *Templater) buildComponentHeadFuncMap(componentHead componentExecutorFu
 func (tm *Templater) commonFuncs() template.FuncMap {
 	funcs := funcs.DefaultMap()
 
-	maps.Copy(funcs, tm.funcs())
+	if tm.cfg.Funcs != nil {
+		maps.Copy(funcs, tm.cfg.Funcs())
+	}
 
 	return funcs
 }
