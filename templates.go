@@ -133,7 +133,7 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 	layoutFilename := "layout" + tm.cfg.FileExt
 
 	layout, err := template.New(layoutFilename).
-		Funcs(tm.buildComponentFuncMap()).
+		Funcs(tm.buildFuncMap()).
 		ParseFiles(path.Join(tm.cfg.Dirs.Base, layoutFilename))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse layout html file: %w", err)
@@ -169,7 +169,7 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 	filename := name + tm.cfg.FileExt
 
 	t, err := template.New(name).
-		Funcs(tm.buildComponentFuncMap()).
+		Funcs(tm.buildFuncMap()).
 		ParseFiles(path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Components, filename))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse component %s: %w", name, err)
@@ -183,7 +183,7 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (tm *Templater) buildComponentFuncMap() template.FuncMap {
+func (tm *Templater) buildFuncMap() template.FuncMap {
 	m := template.FuncMap(map[string]any{
 		// template execution
 		"component": func(name string, props ...any) (template.HTML, error) {
