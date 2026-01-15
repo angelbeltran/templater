@@ -41,7 +41,7 @@
 // corresponding file in /page_heads/ - it is optional.
 //
 // To use a component in a page or other component, use the
-// `componentBody` function.
+// `component` function.
 // It's provided by Templater.ExecutePage and Templater.ExecuteComponentBody.
 // It requires the name of the component - name of the file in
 // /components/ minus the .html.tmpl file extension.
@@ -52,7 +52,7 @@
 // These props are not required.
 // Example:
 //
-// {{ componentBody "header" "title" "My Website" "subtitle" "Another Pet Project" }}
+// {{ component "header" "title" "My Website" "subtitle" "Another Pet Project" }}
 //
 // This would compile the component at /components/header.html.tmpl
 // with the single props title = "My Website" and subtitle = "Another Pet Project".
@@ -61,25 +61,25 @@
 // respective component <head/> elements, e.g. for stylesheets or scripts.
 // To accomplish this, within the /page_heads/ file with the same name as the
 // page template in /pages/ use `componentHead` in the same manner as
-// `componentBody`.
+// `component`.
 // Example:
 //
 // {{ componentHead "header" "title" "My Website" "subtitle" "Another Pet Project" }}
 //
 // This will compile the template at /component_heads/header.html.tmpl
-// with the same props as in the componentBody example.
+// with the same props as in the component example.
 // Templates within /component_heads/ may also use componentHead to include
 // <head/> elements potentially needed by the components embedded via
-// componentBody.
+// component.
 // The componentHead function will eliminate duplicate <head/> elements
 // when possible.
 //
-// The usage of `componentBody` and `componentHead` together within templates
+// The usage of `component` and `componentHead` together within templates
 // allow the composing of component templates into larger components and
 // webpages in a manner that is more modular.
 //
 // Additional template functions provided are
-// - props: constructs a props map[string]any in the many used by componentBody.
+// - props: constructs a props map[string]any in the many used by component.
 package templater
 
 import (
@@ -291,11 +291,11 @@ func (tm *Templater) buildPageFuncMap() template.FuncMap {
 
 	funcs := template.FuncMap(map[string]any{
 		// template execution
-		"componentHead": uniqueComponentHeadExecutor,
-		"componentBody": func(name string, props ...any) (template.HTML, error) {
+		"component": func(name string, props ...any) (template.HTML, error) {
 			b, err := tm.ExecuteComponentBody(name, props...)
 			return template.HTML(b), err
 		},
+		"componentHead": uniqueComponentHeadExecutor,
 	})
 
 	maps.Copy(funcs, tm.commonFuncs())
@@ -306,7 +306,7 @@ func (tm *Templater) buildPageFuncMap() template.FuncMap {
 func (tm *Templater) buildComponentBodyFuncMap() template.FuncMap {
 	funcs := template.FuncMap(map[string]any{
 		// template execution
-		"componentBody": func(name string, props ...any) (template.HTML, error) {
+		"component": func(name string, props ...any) (template.HTML, error) {
 			b, err := tm.ExecuteComponentBody(name, props...)
 			return template.HTML(b), err
 		},
