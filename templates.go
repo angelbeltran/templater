@@ -184,7 +184,7 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 }
 
 func (tm *Templater) buildComponentFuncMap() template.FuncMap {
-	funcs := template.FuncMap(map[string]any{
+	m := template.FuncMap(map[string]any{
 		// template execution
 		"component": func(name string, props ...any) (template.HTML, error) {
 			b, err := tm.ExecuteComponent(name, props...)
@@ -192,17 +192,8 @@ func (tm *Templater) buildComponentFuncMap() template.FuncMap {
 		},
 	})
 
-	maps.Copy(funcs, tm.commonFuncs())
+	maps.Copy(m, funcs.DefaultMap())
+	maps.Copy(m, tm.cfg.Funcs())
 
-	return funcs
-}
-
-func (tm *Templater) commonFuncs() template.FuncMap {
-	funcs := funcs.DefaultMap()
-
-	if tm.cfg.Funcs != nil {
-		maps.Copy(funcs, tm.cfg.Funcs())
-	}
-
-	return funcs
+	return m
 }
