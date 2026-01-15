@@ -128,11 +128,9 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 		return nil, err
 	}
 
-	cfg := tm.cfg
-
 	// parse the layout template
 
-	layoutFilename := "layout" + cfg.FileExt
+	layoutFilename := "layout" + tm.cfg.FileExt
 
 	layout, err := template.New(layoutFilename).
 		Funcs(tm.buildComponentFuncMap()).
@@ -143,7 +141,7 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 
 	// define "body" template
 
-	if b, err := os.ReadFile(path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Pages, name+cfg.FileExt)); err != nil {
+	if b, err := os.ReadFile(path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Pages, name+tm.cfg.FileExt)); err != nil {
 		return nil, fmt.Errorf("failed to read page body html file: %w", err)
 	} else {
 		if _, err := layout.New("body").Parse(string(b)); err != nil {
