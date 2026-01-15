@@ -2,9 +2,9 @@
 // To use this package, a directory holdings all templates must exist.
 // That directory, must hold the following structure.
 //   - /layout.html.tmpl
-//   - /page_bodies/
+//   - /pages/
 //   - /page_heads/
-//   - /component_bodies/
+//   - /components/
 //   - /component_heads/
 //
 // The layout.html.tmpl file holds the general webpage layout, with a root
@@ -26,17 +26,17 @@
 //
 // All other such templates must have the file extension .html.tmpl.
 //
-// The /page_bodies/ directory holds all templates serving the "body"
+// The /pages/ directory holds all templates serving the "body"
 // of standalone webpages.
 // They may be compiled and executed via Templater.ExecutePage.
-// These templates may reuse components defined in /component_bodies/.
+// These templates may reuse components defined in /components/.
 //
-// The /component_bodies/ directory holds all templates intended for use as
+// The /components/ directory holds all templates intended for use as
 // components, usable in any page or other component (even in themselves!).
 //
 // The /page_heads/ and /component_heads/ directories hold html intended to
 // be placed in the <head> of the page alongside the respective page or
-// component in /page_bodies/ or /component_bodies/, respectively.
+// component in /pages/ or /components/, respectively.
 // When compiling a page via Templater.ExecutePage, the need not be a
 // corresponding file in /page_heads/ - it is optional.
 //
@@ -44,7 +44,7 @@
 // `componentBody` function.
 // It's provided by Templater.ExecutePage and Templater.ExecuteComponentBody.
 // It requires the name of the component - name of the file in
-// /component_bodies/ without the .html.tmpl file extension.
+// /components/ without the .html.tmpl file extension.
 // It accepts a sequence of key-value pairs describing the "props" provided
 // to the component, the odd arguments being key strings, and the even
 // arguments being the values.
@@ -54,13 +54,13 @@
 //
 // {{ componentBody "header" "title" "My Website" "subtitle" "Another Pet Project" }}
 //
-// This would compile the component at /component_bodies/header.html.tmpl
+// This would compile the component at /components/header.html.tmpl
 // with the single props title = "My Website" and subtitle = "Another Pet Project".
 //
 // Just as you can build pages using components, you may need to import the
 // respective component <head/> elements, e.g. for stylesheets or scripts.
 // To accomplish this, within the /page_heads/ file with the same name as the
-// page template in /page_bodies/ use `componentHead` in the same manner as
+// page template in /pages/ use `componentHead` in the same manner as
 // `componentBody`.
 // Example:
 //
@@ -137,7 +137,7 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 
 	// define "body" template
 
-	if b, err := os.ReadFile(path.Join(tm.templatesDir, "page_bodies", name+".html.tmpl")); err != nil {
+	if b, err := os.ReadFile(path.Join(tm.templatesDir, "pages", name+".html.tmpl")); err != nil {
 		return nil, fmt.Errorf("failed to read page body html file: %w", err)
 	} else {
 		if _, err := layout.New("body").Parse(string(b)); err != nil {
@@ -166,7 +166,7 @@ func (tm *Templater) ExecuteComponentBody(name string, kvs ...any) ([]byte, erro
 
 	t, err := template.New(name).
 		Funcs(tm.buildComponentBodyFuncMap()).
-		ParseFiles(path.Join(tm.templatesDir, "component_bodies", filename))
+		ParseFiles(path.Join(tm.templatesDir, "components", filename))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse component %s: %w", name, err)
 	}
