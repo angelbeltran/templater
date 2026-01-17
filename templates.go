@@ -175,7 +175,7 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 		return nil, err
 	}
 
-	props["PathParams"], _ = funcs.GetPathParameters(match, filename)
+	props["PathParams"], _ = getPathParameters(match, filename)
 
 	// define "body" template
 
@@ -212,7 +212,7 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 		return nil, err
 	}
 
-	props["PathParams"], _ = funcs.GetPathParameters(match, filename)
+	props["PathParams"], _ = getPathParameters(match, filename)
 
 	t, err := template.New(name).
 		Funcs(tm.buildFuncMap(name, props)).
@@ -231,8 +231,8 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 
 // findBestFilenameMatchInDir finds the most exact match for a filename, allowing for path segments wildcards for the form {\w+}.
 func findBestFilenameMatchInDir(filename, dir string) (string, error) {
-	filenameSegments := funcs.GetPathSegments(filename)
-	ext := funcs.GetExtendedExtension(filename)
+	filenameSegments := getPathSegments(filename)
+	ext := getExtendedExtension(filename)
 
 	var matchesFound [][]string
 
@@ -241,7 +241,7 @@ func findBestFilenameMatchInDir(filename, dir string) (string, error) {
 			return err
 		}
 
-		segments := funcs.GetPathSegments(p)
+		segments := getPathSegments(p)
 		expectFile := len(segments) == len(filenameSegments)
 
 		if d.IsDir() && expectFile {
@@ -316,19 +316,6 @@ func findBestFilenameMatchInDir(filename, dir string) (string, error) {
 	return strings.Join(matchingFilenameSegments, "/"), nil
 }
 
-func getExtendedExtension(filename string) string {
-	var res string
-	for {
-		ext := path.Ext(filename)
-		if ext == "" {
-			return res
-		}
-
-		filename = filename[:len(filename)-len(ext)]
-		res = ext + res
-	}
-}
-
 type segmentTree map[string]segmentTree
 
 func buildSegmentTree(pathSegmentList ...[]string) segmentTree {
@@ -353,7 +340,7 @@ func buildSegmentTree(pathSegmentList ...[]string) segmentTree {
 
 // getWildcardPathCombinations respected filename extensions
 func getWildcardPathCombinations(filename string) []string {
-	matchingPathSegments := getWildcardPathSegmentCombinations(funcs.GetPathSegments(filename))
+	matchingPathSegments := getWildcardPathSegmentCombinations(getPathSegments(filename))
 
 	var precedingSlash string
 	if len(filename) > 0 && filename[0] == '/' {
@@ -419,4 +406,70 @@ func (tm *Templater) buildFuncMap(name string, props map[string]any) template.Fu
 	maps.Copy(m, tm.cfg.Funcs(name, props))
 
 	return m
+}
+
+func getPathSegments(p string) []string {
+	p = path.Clean(p)
+	if p == "" || p == "." {
+		return nil
+	}
+
+	if p[0] == '/' {
+		p = p[1:]
+	}
+	if p == "" {
+		return nil
+	}
+
+	if p[len(p)-1] == '/' {
+		p = p[:len(p)-1]
+	}
+
+	return strings.Split(p, "/")
+}
+
+// TODO: move this up, if not used in this pkg
+func getPathParameters(pattern, targetPath string) (params map[string]string, match bool) {
+	ext := getExtendedExtension(pattern)
+	targetPathExt := getExtendedExtension(targetPath)
+	if ext != targetPathExt {
+		return nil, false
+	}
+
+	patternWithoutExt := pattern[:len(pattern)-len(ext)]
+	targetPathWithoutExt := targetPath[:len(targetPath)-len(ext)]
+
+	patternSegments := getPathSegments(patternWithoutExt)
+	pathSegments := getPathSegments(targetPathWithoutExt)
+
+	if len(patternSegments) != len(pathSegments) {
+		return nil, false
+	}
+
+	params = make(map[string]string, len(patternSegments))
+	for i, s := range patternSegments {
+		isWildcard := len(s) > 2 && s[0] == '{' && s[len(s)-1] == '}'
+		if isWildcard {
+			wildcard := s[1 : len(s)-1]
+			value := pathSegments[i]
+			params[wildcard] = value
+		} else if exactMatch := pathSegments[i] == s; !exactMatch {
+			return nil, false
+		}
+	}
+
+	return params, true
+}
+
+func getExtendedExtension(filename string) string {
+	var res string
+	for {
+		ext := path.Ext(filename)
+		if ext == "" || ext == filename {
+			return res
+		}
+
+		filename = filename[:len(filename)-len(ext)]
+		res = ext + res
+	}
 }
