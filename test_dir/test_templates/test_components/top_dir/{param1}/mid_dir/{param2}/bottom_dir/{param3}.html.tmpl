@@ -1,0 +1,17 @@
+<div>
+	<div>
+		{{ .Q }}
+	</div>
+	<div>
+		{{ .R }}
+	</div>
+	<div>
+		{{ .S }}
+	</div>
+
+	{{ component "component_2"
+		"A" .PathParams.param1
+		"B" .PathParams.param2
+		"C" .PathParams.param3
+	}}
+</div>

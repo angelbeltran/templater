@@ -57,15 +57,32 @@
 //
 // Additional template functions provided are
 // - props: constructs a props map[string]any in the many used by component.
+//
+// Additionally, path wildcards of the form {.*} are supported.
+// For example, given a component file /component/buttons/{id}/id-button.html.tmpl
+//
+//	 <button>
+//		  {{ .PathParams.id }
+//	 </button>
+//
+// Calling ExecuteComponent with "buttons/123/id-button" will compile to
+//
+//	 <button>
+//		  123
+//	 </button>
+//
+// Similar behavior is provided in ExecutePage.
 package templater
 
 import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"maps"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/angelbeltran/templater/funcs"
 )
@@ -150,9 +167,19 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 		return nil, fmt.Errorf("failed to parse layout html file: %w", err)
 	}
 
+	filename := name + tm.cfg.FileExt
+	pageDir := path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Pages)
+
+	match, err := findBestFilenameMatchInDir(filename, pageDir)
+	if err != nil {
+		return nil, err
+	}
+
+	props["PathParams"], _ = funcs.GetPathParameters(match, filename)
+
 	// define "body" template
 
-	if b, err := os.ReadFile(path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Pages, name+tm.cfg.FileExt)); err != nil {
+	if b, err := os.ReadFile(path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Pages, match)); err != nil {
 		return nil, fmt.Errorf("failed to read page body html file: %w", err)
 	} else {
 		if _, err := layout.New("body").Parse(string(b)); err != nil {
@@ -178,20 +205,205 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 	}
 
 	filename := name + tm.cfg.FileExt
+	componentDir := path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Components)
+
+	match, err := findBestFilenameMatchInDir(filename, componentDir)
+	if err != nil {
+		return nil, err
+	}
+
+	props["PathParams"], _ = funcs.GetPathParameters(match, filename)
 
 	t, err := template.New(name).
 		Funcs(tm.buildFuncMap(name, props)).
-		ParseFiles(path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Components, filename))
+		ParseFiles(path.Join(componentDir, match))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse component %s: %w", name, err)
 	}
 
 	buf := new(bytes.Buffer)
-	if err := t.ExecuteTemplate(buf, path.Base(filename), props); err != nil {
+	if err := t.ExecuteTemplate(buf, path.Base(match), props); err != nil {
 		return nil, fmt.Errorf("failed to execute component %s: %w", name, err)
 	}
 
 	return buf.Bytes(), nil
+}
+
+// findBestFilenameMatchInDir finds the most exact match for a filename, allowing for path segments wildcards for the form {\w+}.
+func findBestFilenameMatchInDir(filename, dir string) (string, error) {
+	filenameSegments := funcs.GetPathSegments(filename)
+	ext := funcs.GetExtendedExtension(filename)
+
+	var matchesFound [][]string
+
+	err := fs.WalkDir(os.DirFS(dir), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		segments := funcs.GetPathSegments(p)
+		expectFile := len(segments) == len(filenameSegments)
+
+		if d.IsDir() && expectFile {
+			return fs.SkipDir
+		}
+		if !d.IsDir() && !expectFile {
+			return nil
+		}
+
+		for i, seg := range segments {
+			if exactMatch := filenameSegments[i] == seg; exactMatch {
+				continue
+			}
+
+			isLastSegment := i == len(segments)-1
+
+			var isWildCard bool
+			if isLastSegment && expectFile {
+				if strings.HasSuffix(seg, ext) {
+					base := seg[:len(seg)-len(ext)]
+					isWildCard = len(base) > 2 && base[0] == '{' && base[len(base)-1] == '}'
+				}
+			} else {
+				isWildCard = len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}'
+			}
+
+			if isWildCard {
+				continue
+			}
+
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		if len(segments) == len(filenameSegments) {
+			matchesFound = append(matchesFound, segments)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to walk the template directory: %w", err)
+	}
+
+	if len(matchesFound) == 0 {
+		return "", &ErrNotTemplateFileFound{
+			Dir:      dir,
+			Filename: filename,
+		}
+	}
+
+	matchingFilenameSegments := make([]string, len(filenameSegments))
+	tree := buildSegmentTree(matchesFound...)
+	branch := tree
+	for i, seg := range filenameSegments {
+		if st, exactMatch := branch[seg]; exactMatch {
+			matchingFilenameSegments[i] = seg
+			branch = st
+		} else if l := len(branch); l > 1 {
+			return "", fmt.Errorf("multiple wildcard branches found while looking for matching file for %s at %s: %d", filename, dir, l)
+		} else {
+			// there should only be a single branch
+			for wildcard, st := range branch {
+				matchingFilenameSegments[i] = wildcard
+				branch = st
+			}
+		}
+	}
+
+	return strings.Join(matchingFilenameSegments, "/"), nil
+}
+
+func getExtendedExtension(filename string) string {
+	var res string
+	for {
+		ext := path.Ext(filename)
+		if ext == "" {
+			return res
+		}
+
+		filename = filename[:len(filename)-len(ext)]
+		res = ext + res
+	}
+}
+
+type segmentTree map[string]segmentTree
+
+func buildSegmentTree(pathSegmentList ...[]string) segmentTree {
+	if len(pathSegmentList) == 0 {
+		return make(segmentTree)
+	}
+
+	tree := buildSegmentTree(pathSegmentList[1:]...)
+
+	node := tree
+	for _, seg := range pathSegmentList[0] {
+		subnode, ok := node[seg]
+		if !ok {
+			subnode = make(segmentTree)
+			node[seg] = subnode
+		}
+		node = subnode
+	}
+
+	return tree
+}
+
+// getWildcardPathCombinations respected filename extensions
+func getWildcardPathCombinations(filename string) []string {
+	matchingPathSegments := getWildcardPathSegmentCombinations(funcs.GetPathSegments(filename))
+
+	var precedingSlash string
+	if len(filename) > 0 && filename[0] == '/' {
+		precedingSlash = "/"
+	}
+
+	var trailingSlash string
+	if len(filename) > 0 && filename[len(filename)-1] == '/' {
+		trailingSlash = "/"
+	}
+
+	paths := make([]string, len(matchingPathSegments))
+	for i, segments := range matchingPathSegments {
+		paths[i] = precedingSlash + strings.Join(segments, "/") + trailingSlash
+	}
+
+	return paths
+}
+
+// getWildcardPathSegmentCombinations respected filename extensions
+func getWildcardPathSegmentCombinations(segments []string) [][]string {
+	const wildcard = "{.*}"
+
+	switch len(segments) {
+	case 0:
+		return nil
+	case 1:
+		wildcardSegment := wildcard
+		if ext := path.Ext(segments[0]); ext != "" {
+			wildcardSegment += ext
+		}
+
+		return [][]string{
+			[]string{segments[0]},
+			[]string{wildcardSegment},
+		}
+	default:
+		head := segments[0]
+		tail := segments[1:]
+
+		tailCombinations := getWildcardPathSegmentCombinations(tail)
+
+		combinations := make([][]string, len(tailCombinations)*2)
+		for i, comb := range tailCombinations {
+			combinations[i*2] = append([]string{head}, comb...)
+			combinations[(i*2)+1] = append([]string{wildcard}, comb...)
+		}
+
+		return combinations
+	}
 }
 
 func (tm *Templater) buildFuncMap(name string, props map[string]any) template.FuncMap {

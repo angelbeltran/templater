@@ -1,0 +1,19 @@
+<div>
+	<div>
+		HEADER
+	</div>
+	<div>
+		{{ .A }}
+	</div>
+	<div>
+		{{ .B }}
+	</div>
+	<div>
+		{{ .C }}
+	</div>
+	{{ component "component_1"
+		"X" "abc"
+		"Y" 123
+		"Z" true
+	}}
+</div>
