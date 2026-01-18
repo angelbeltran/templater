@@ -82,6 +82,7 @@ import (
 	"maps"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/angelbeltran/templater/funcs"
@@ -175,7 +176,10 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 		return nil, err
 	}
 
-	props["PathParams"], _ = getPathParameters(match, filename)
+	props["PathParams"], _, err = getPathParameters(match, filename)
+	if err != nil {
+		return nil, err
+	}
 
 	// define "body" template
 
@@ -212,7 +216,10 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 		return nil, err
 	}
 
-	props["PathParams"], _ = getPathParameters(match, filename)
+	props["PathParams"], _, err = getPathParameters(match, filename)
+	if err != nil {
+		return nil, err
+	}
 
 	t, err := template.New(name).
 		Funcs(tm.buildFuncMap(name, props)).
@@ -428,12 +435,11 @@ func getPathSegments(p string) []string {
 	return strings.Split(p, "/")
 }
 
-// TODO: move this up, if not used in this pkg
-func getPathParameters(pattern, targetPath string) (params map[string]string, match bool) {
+func getPathParameters(pattern, targetPath string) (params map[string]any, match bool, err error) {
 	ext := getExtendedExtension(pattern)
 	targetPathExt := getExtendedExtension(targetPath)
 	if ext != targetPathExt {
-		return nil, false
+		return nil, false, nil
 	}
 
 	patternWithoutExt := pattern[:len(pattern)-len(ext)]
@@ -443,22 +449,175 @@ func getPathParameters(pattern, targetPath string) (params map[string]string, ma
 	pathSegments := getPathSegments(targetPathWithoutExt)
 
 	if len(patternSegments) != len(pathSegments) {
-		return nil, false
+		return nil, false, nil
 	}
 
-	params = make(map[string]string, len(patternSegments))
+	params = make(map[string]any, len(patternSegments))
 	for i, s := range patternSegments {
 		isWildcard := len(s) > 2 && s[0] == '{' && s[len(s)-1] == '}'
 		if isWildcard {
 			wildcard := s[1 : len(s)-1]
 			value := pathSegments[i]
-			params[wildcard] = value
+
+			key, parsed, err := parseWildcard(wildcard, value)
+			if err != nil {
+				return nil, false, fmt.Errorf("failed to parse wildcard: %w", err)
+			}
+
+			params[key] = parsed
 		} else if exactMatch := pathSegments[i] == s; !exactMatch {
-			return nil, false
+			return nil, false, nil
 		}
 	}
 
-	return params, true
+	return params, true, nil
+}
+
+func parseWildcard(wildcardKey, value string) (key string, parsed any, err error) {
+	parts := strings.SplitN(wildcardKey, ":", 2)
+	if len(parts) == 1 {
+		return wildcardKey, value, nil
+	}
+
+	parsed, err = parseWildcardValue(parts[1], value)
+	return parts[0], parsed, err
+}
+
+func parseWildcardValue(typeName, value string) (parsed any, err error) {
+	werr := ErrInvalidWildcardValue{
+		Value: value,
+		Type:  typeName,
+	}
+
+	switch typeName {
+	// boolean
+	case "bool":
+		switch strings.ToLower(value) {
+		case "true":
+			return true, nil
+		case "false":
+			return false, nil
+		default:
+			return nil, werr.errorf(`expected "true" or "false"`)
+		}
+
+	// integer
+	case "int":
+		n, err := strconv.ParseInt(value, 10, strconv.IntSize)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return int(n), nil
+	case "int8":
+		n, err := strconv.ParseInt(value, 10, 8)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return int8(n), nil
+	case "int16":
+		n, err := strconv.ParseInt(value, 10, 16)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return int16(n), nil
+	case "int32":
+		n, err := strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return int32(n), nil
+	case "int64":
+		n, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return int64(n), nil
+
+	// unsigned integer
+	case "uint":
+		n, err := strconv.ParseUint(value, 10, strconv.IntSize)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return uint(n), nil
+	case "uintptr":
+		n, err := strconv.ParseUint(value, 10, strconv.IntSize)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return uintptr(n), nil
+	case "uint8":
+		n, err := strconv.ParseUint(value, 10, 8)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return uint8(n), nil
+	case "uint16":
+		n, err := strconv.ParseUint(value, 10, 16)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return uint16(n), nil
+	case "uint32":
+		n, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return uint32(n), nil
+	case "uint64":
+		n, err := strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return uint64(n), nil
+
+	// floating pointer
+	case "float32":
+		n, err := strconv.ParseFloat(value, 32)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return float32(n), nil
+	case "float64":
+		n, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return float64(n), nil
+
+	// complex
+	case "complex64":
+		n, err := strconv.ParseComplex(value, 64)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return complex64(n), nil
+	case "complex128":
+		n, err := strconv.ParseComplex(value, 128)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return complex128(n), nil
+
+	// bytes
+	case "byte":
+		n, err := strconv.ParseUint(value, 16, 8)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return byte(uint8(n)), nil
+	case "rune":
+		n, err := strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			return nil, werr.wrap(err)
+		}
+		return rune(int32(n)), nil
+	case "string":
+		return value, nil
+
+	default:
+		return nil, werr.errorf("unrecognized wildcard type: %q", typeName)
+	}
 }
 
 func getExtendedExtension(filename string) string {

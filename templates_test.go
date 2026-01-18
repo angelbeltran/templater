@@ -140,7 +140,7 @@ func TestTemplater_ExecuteComponent(t *testing.T) {
 						Components: "test_components",
 					},
 				},
-				Name: "top_dir/321/mid_dir/some-phrase/bottom_dir/last-part",
+				Name: "top_dir/some-phrase/mid_dir/321/bottom_dir/last-part",
 				KVs: []any{
 					"Q", "QQQQ",
 					"R", 7777,
@@ -163,10 +163,10 @@ func TestTemplater_ExecuteComponent(t *testing.T) {
       HEADER
     </div>
     <div>
-      321
+      some-phrase
     </div>
     <div>
-      some-phrase
+      321
     </div>
     <div>
       last-part
@@ -309,10 +309,10 @@ func TestTemplater_ExecutePage(t *testing.T) {
               HEADER
             </div>
             <div>
-              321
+              some-phrase
             </div>
             <div>
-              some-phrase
+              321
             </div>
             <div>
               last-part
