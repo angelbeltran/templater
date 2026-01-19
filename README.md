@@ -111,7 +111,7 @@ func main() {
 
 ## Additional Features
 - path parameters, eg `/pets/{name}`
-    - type parameter support: eg `/store/{storeID:int}`,
+    - type parameter support: eg `/store/{storeID.int}`,
     - automatic injection into templates via "PathParams" argument `<div>Store ID: {{ .PathParams.storeID }}</div>`
 - configurable
     - template directories

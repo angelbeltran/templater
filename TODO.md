@@ -1,0 +1,16 @@
+- [x] simplify page/component dirs
+- [x] make page/component dirs configurable
+- [x] make the file extension configurable
+- [x] shorten componentBody function to component
+- [x] eliminate the \_head directories and '\*Head' component functionality componently - leave it to the developer to implement head templates.
+- [x] try to compose the remaining functions.
+- [x] make the Funcs configurable after initialization
+- [x] match files based on wildcard (TEST TEST TEST!)
+    - [x] parse path params automatically
+    - [x] optional: parse in the desired type
+- [ ] consider changing the functions to accept an io.Writer argument.
+- [ ] consider making two types:
+    - [ ] component executor
+    - [ ] page executor
+- [ ] replace 'ExecutePage' and 'ExecuteComponent' with 'RenderPage' and 'Render', respectively.
+- [ ] implement template caching

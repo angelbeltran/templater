@@ -186,6 +186,27 @@ func TestTemplater_ExecuteComponent(t *testing.T) {
 </div>`,
 			},
 		},
+		{
+			Name: "Given a component " +
+				"With a path param " +
+				"Then the component is rendered",
+			Args: Args{
+				Config: Config{
+					Dirs: DirsConfig{
+						Base:       "test_dir/test_templates",
+						Pages:      "test_pages",
+						Components: "test_components",
+					},
+				},
+				Name: "58",
+				KVs:  []any{},
+			},
+			Expected: Expected{
+				Bytes: `<div>
+  byte: 58
+</div>`,
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -250,6 +271,42 @@ func TestTemplater_ExecutePage(t *testing.T) {
     </header>
     <div>
       TEST
+    </div>
+    <footer>
+      FOOTER
+    </footer>
+  </body>
+</html>`,
+			},
+		},
+		{
+			Name: "Given a page " +
+				"With a path param " +
+				"Then the page is rendered",
+			Args: Args{
+				Config: Config{
+					Dirs: DirsConfig{
+						Base:       "test_dir/test_templates",
+						Pages:      "test_pages",
+						Components: "test_components",
+					},
+				},
+				Name: "true",
+			},
+			Expected: Expected{
+				Bytes: `<!DOCTYPE html>
+<html>
+  <head>
+    <title>
+      ABC
+    </title>
+  </head>
+  <body>
+    <header>
+      HEAD
+    </header>
+    <div>
+      true or false: true
     </div>
     <footer>
       FOOTER

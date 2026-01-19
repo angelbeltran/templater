@@ -474,7 +474,7 @@ func getPathParameters(pattern, targetPath string) (params map[string]any, match
 }
 
 func parseWildcard(wildcardKey, value string) (key string, parsed any, err error) {
-	parts := strings.SplitN(wildcardKey, ":", 2)
+	parts := strings.SplitN(wildcardKey, ".", 2)
 	if len(parts) == 1 {
 		return wildcardKey, value, nil
 	}
@@ -621,10 +621,12 @@ func parseWildcardValue(typeName, value string) (parsed any, err error) {
 }
 
 func getExtendedExtension(filename string) string {
+	startsWithWildcardPrefix := len(filename) > 0 && filename[0] == '{'
+
 	var res string
 	for {
 		ext := path.Ext(filename)
-		if ext == "" || ext == filename {
+		if ext == "" || ext == filename || (startsWithWildcardPrefix && filename[len(filename)-1] == '}') {
 			return res
 		}
 
