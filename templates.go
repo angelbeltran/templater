@@ -76,6 +76,7 @@ package templater
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -246,6 +247,38 @@ func (tm *Templater) executeComponent(name string, props map[string]any) ([]byte
 	}
 
 	return buf.Bytes(), nil
+}
+
+// Execute is a convenience function, executing the first template matching the given name,
+// checking page templates first, then component templates.
+// If name conflicts exist between pages and components, then it's recommend to use ExecutePage
+// or ExecuteComponent instead.
+func (tm *Templater) Execute(name string, kvs ...any) ([]byte, error) {
+	props, err := funcs.NewKVSProps(kvs...)
+	if err != nil {
+		return nil, err
+	}
+
+	return tm.execute(name, props)
+}
+
+func (tm *Templater) execute(name string, props map[string]any) ([]byte, error) {
+	b, perr := tm.executePage(name, props)
+	if perr == nil {
+		return b, nil
+	}
+
+	var te *ErrNotTemplateFileFound
+	if !errors.As(perr, &te) {
+		return nil, perr
+	}
+
+	b, cerr := tm.executeComponent(name, props)
+	if cerr == nil {
+		return b, nil
+	}
+
+	return nil, errors.Join(perr, cerr)
 }
 
 // findBestFilenameMatchInDir finds the most exact match for a filename, allowing for path segments wildcards for the form {\w+}.
