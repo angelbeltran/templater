@@ -432,6 +432,42 @@ func TestTemplater_ExecutePage(t *testing.T) {
 </html>`,
 			},
 		},
+		{
+			Name: "Given a page " +
+				"And there is only an index file " +
+				"Then the page is rendered",
+			Args: Args{
+				Config: Config{
+					Dirs: DirsConfig{
+						Base:       "test_dir/test_templates",
+						Pages:      "test_pages",
+						Components: "test_components",
+					},
+				},
+				Name: "top_dir",
+			},
+			Expected: Expected{
+				Bytes: `<!DOCTYPE html>
+<html>
+  <head>
+    <title>
+      ABC
+    </title>
+  </head>
+  <body>
+    <header>
+      HEAD
+    </header>
+    <div>
+      top level page
+    </div>
+    <footer>
+      FOOTER
+    </footer>
+  </body>
+</html>`,
+			},
+		},
 	}
 
 	for _, test := range tests {

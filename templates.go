@@ -157,6 +157,25 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 		return nil, err
 	}
 
+	return tm.executePage(name, props)
+}
+
+func (tm *Templater) executePage(name string, props map[string]any) ([]byte, error) {
+	// find a matching file, and parse the path parameters
+
+	filename := name + tm.cfg.FileExt
+	pageDir := path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Pages)
+
+	match, err := findBestFilenameMatchInDir(name, tm.cfg.FileExt, pageDir)
+	if err != nil {
+		return nil, err
+	}
+
+	props["PathParams"], _, err = getPathParameters(match, filename)
+	if err != nil {
+		return nil, err
+	}
+
 	// parse the layout template
 
 	layoutFilename := "layout" + tm.cfg.FileExt
@@ -166,19 +185,6 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 		ParseFiles(path.Join(tm.cfg.Dirs.Base, layoutFilename))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse layout html file: %w", err)
-	}
-
-	filename := name + tm.cfg.FileExt
-	pageDir := path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Pages)
-
-	match, err := findBestFilenameMatchInDir(filename, pageDir)
-	if err != nil {
-		return nil, err
-	}
-
-	props["PathParams"], _, err = getPathParameters(match, filename)
-	if err != nil {
-		return nil, err
 	}
 
 	// define "body" template
@@ -208,18 +214,24 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 		return nil, err
 	}
 
+	return tm.executeComponent(name, props)
+}
+
+func (tm *Templater) executeComponent(name string, props map[string]any) ([]byte, error) {
 	filename := name + tm.cfg.FileExt
 	componentDir := path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Components)
 
-	match, err := findBestFilenameMatchInDir(filename, componentDir)
+	match, err := findBestFilenameMatchInDir(name, tm.cfg.FileExt, componentDir)
 	if err != nil {
 		return nil, err
 	}
 
-	props["PathParams"], _, err = getPathParameters(match, filename)
+	pathParams, _, err := getPathParameters(match, filename)
 	if err != nil {
 		return nil, err
 	}
+
+	props["PathParams"] = pathParams
 
 	t, err := template.New(name).
 		Funcs(tm.buildFuncMap(name, props)).
@@ -237,9 +249,10 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 }
 
 // findBestFilenameMatchInDir finds the most exact match for a filename, allowing for path segments wildcards for the form {\w+}.
-func findBestFilenameMatchInDir(filename, dir string) (string, error) {
-	filenameSegments := getPathSegments(filename)
-	ext := getExtendedExtension(filename)
+// supports index.html files.
+func findBestFilenameMatchInDir(filenameBase, ext, dir string) (string, error) {
+	filename := filenameBase + ext
+	filenameBaseSegments := getPathSegments(filenameBase)
 
 	var matchesFound [][]string
 
@@ -248,32 +261,44 @@ func findBestFilenameMatchInDir(filename, dir string) (string, error) {
 			return err
 		}
 
-		segments := getPathSegments(p)
-		expectFile := len(segments) == len(filenameSegments)
-
-		if d.IsDir() && expectFile {
-			return fs.SkipDir
+		pWithoutExt := p
+		if !d.IsDir() && strings.HasSuffix(pWithoutExt, ext) {
+			pWithoutExt = pWithoutExt[:len(pWithoutExt)-len(ext)]
 		}
-		if !d.IsDir() && !expectFile {
-			return nil
+
+		segments := getPathSegments(pWithoutExt)
+		expectMatchingFileOrParentDir := len(segments) == len(filenameBaseSegments)
+		expectIndexFile := len(segments) == (len(filenameBaseSegments) + 1)
+
+		switch {
+		case expectIndexFile:
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+		case expectMatchingFileOrParentDir:
+		default:
+			if !d.IsDir() {
+				return nil
+			}
 		}
 
 		for i, seg := range segments {
-			if exactMatch := filenameSegments[i] == seg; exactMatch {
+			if i < len(filenameBaseSegments) && filenameBaseSegments[i] == seg {
 				continue
 			}
 
 			isLastSegment := i == len(segments)-1
-
-			var isWildCard bool
-			if isLastSegment && expectFile {
-				if strings.HasSuffix(seg, ext) {
-					base := seg[:len(seg)-len(ext)]
-					isWildCard = len(base) > 2 && base[0] == '{' && base[len(base)-1] == '}'
+			if isLastSegment {
+				if expectIndexFile && seg == "index" {
+					continue
 				}
-			} else {
-				isWildCard = len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}'
 			}
+
+			base := seg
+			if isLastSegment && expectMatchingFileOrParentDir && !d.IsDir() && strings.HasSuffix(seg, ext) {
+				base = seg[:len(seg)-len(ext)]
+			}
+			isWildCard := len(base) > 2 && base[0] == '{' && base[len(base)-1] == '}'
 
 			if isWildCard {
 				continue
@@ -285,7 +310,7 @@ func findBestFilenameMatchInDir(filename, dir string) (string, error) {
 			return nil
 		}
 
-		if len(segments) == len(filenameSegments) {
+		if !d.IsDir() && (expectMatchingFileOrParentDir || expectIndexFile) {
 			matchesFound = append(matchesFound, segments)
 		}
 
@@ -302,10 +327,10 @@ func findBestFilenameMatchInDir(filename, dir string) (string, error) {
 		}
 	}
 
-	matchingFilenameSegments := make([]string, len(filenameSegments))
+	matchingFilenameSegments := make([]string, len(filenameBaseSegments), len(filenameBaseSegments)+1)
 	tree := buildSegmentTree(matchesFound...)
 	branch := tree
-	for i, seg := range filenameSegments {
+	for i, seg := range filenameBaseSegments {
 		if st, exactMatch := branch[seg]; exactMatch {
 			matchingFilenameSegments[i] = seg
 			branch = st
@@ -320,7 +345,12 @@ func findBestFilenameMatchInDir(filename, dir string) (string, error) {
 		}
 	}
 
-	return strings.Join(matchingFilenameSegments, "/"), nil
+	if st, ok := branch["index"]; ok {
+		branch = st
+		matchingFilenameSegments = append(matchingFilenameSegments, "index")
+	}
+
+	return strings.Join(matchingFilenameSegments, "/") + ext, nil
 }
 
 type segmentTree map[string]segmentTree
@@ -403,8 +433,17 @@ func getWildcardPathSegmentCombinations(segments []string) [][]string {
 func (tm *Templater) buildFuncMap(name string, props map[string]any) template.FuncMap {
 	m := template.FuncMap(map[string]any{
 		// template execution
-		"component": func(name string, props ...any) (template.HTML, error) {
-			b, err := tm.ExecuteComponent(name, props...)
+		"component": func(name string, kvs ...any) (template.HTML, error) {
+			additionalProps, err := funcs.NewKVSProps(kvs...)
+			if err != nil {
+				return "", err
+			}
+
+			cpy := make(map[string]any, len(props))
+			maps.Copy(cpy, props)
+			maps.Copy(cpy, additionalProps)
+
+			b, err := tm.executeComponent(name, cpy)
 			return template.HTML(b), err
 		},
 	})
@@ -621,16 +660,17 @@ func parseWildcardValue(typeName, value string) (parsed any, err error) {
 }
 
 func getExtendedExtension(filename string) string {
-	startsWithWildcardPrefix := len(filename) > 0 && filename[0] == '{'
+	base := path.Base(filename)
+	startsWithWildcardPrefix := len(base) > 0 && base[0] == '{'
 
 	var res string
 	for {
-		ext := path.Ext(filename)
-		if ext == "" || ext == filename || (startsWithWildcardPrefix && filename[len(filename)-1] == '}') {
+		ext := path.Ext(base)
+		if ext == "" || ext == base || (startsWithWildcardPrefix && base[len(base)-1] == '}') {
 			return res
 		}
 
-		filename = filename[:len(filename)-len(ext)]
+		base = base[:len(base)-len(ext)]
 		res = ext + res
 	}
 }
