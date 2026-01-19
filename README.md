@@ -117,3 +117,4 @@ func main() {
     - template directories
     - template file extensions
     - template functions
+- index.html / index.html.tmpl support
