@@ -520,12 +520,23 @@ func getPathParameters(pattern, targetPath string) (params map[string]any, match
 	patternSegments := getPathSegments(patternWithoutExt)
 	pathSegments := getPathSegments(targetPathWithoutExt)
 
+	var isIndexFile bool
 	if len(patternSegments) != len(pathSegments) {
-		return nil, false, nil
+		if len(patternSegments) == len(pathSegments)+1 && (patternSegments[len(patternSegments)-1] == "index") {
+			isIndexFile = true
+			// index file support, eg index.html.tmpl
+		} else {
+			return nil, false, nil
+		}
 	}
 
-	params = make(map[string]any, len(patternSegments))
-	for i, s := range patternSegments {
+	l := len(patternSegments)
+	if isIndexFile {
+		l -= 1
+	}
+
+	params = make(map[string]any, l)
+	for i, s := range patternSegments[:l] {
 		isWildcard := len(s) > 2 && s[0] == '{' && s[len(s)-1] == '}'
 		if isWildcard {
 			wildcard := s[1 : len(s)-1]
