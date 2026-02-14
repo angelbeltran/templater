@@ -207,6 +207,36 @@ func TestTemplater_ExecuteComponent(t *testing.T) {
 </div>`,
 			},
 		},
+		{
+			Name: "Given a component " +
+				"With a nested component " +
+				"With a slot " +
+				"Then the component is rendered " +
+				"And the slot is rendered ",
+			Args: Args{
+				Config: Config{
+					Dirs: DirsConfig{
+						Base:       "test_dir/test_templates",
+						Pages:      "test_pages",
+						Components: "test_components",
+					},
+				},
+				Name: "outer_component",
+				KVs: []any{
+					"A", "AAA",
+				},
+			},
+			Expected: Expected{
+				Bytes: `<div>
+  <div>
+    AAA
+  </div>
+  <div>
+    BBB
+  </div>
+</div>`,
+			},
+		},
 	}
 
 	for _, test := range tests {

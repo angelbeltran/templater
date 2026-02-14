@@ -8,9 +8,10 @@
 - [x] match files based on wildcard (TEST TEST TEST!)
     - [x] parse path params automatically
     - [x] optional: parse in the desired type
+        - [ ] make path param parsing errors handling easy
 - [ ] consider changing the functions to accept an io.Writer argument.
 - [ ] consider making two types:
     - [ ] component executor
     - [ ] page executor
-- [ ] replace 'ExecutePage' and 'ExecuteComponent' with 'RenderPage' and 'Render', respectively.
+- [ ] consider replacing 'ExecutePage' and 'ExecuteComponent' with 'RenderPage' and 'Render', respectively.
 - [ ] implement template caching

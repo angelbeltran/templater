@@ -1,0 +1,11 @@
+<div>
+	{{ define "slot" }}
+		<div>
+			BBB
+		</div>
+	{{ end }}
+	{{ component "inner_component"
+		"#header" "slot"
+		"A" .A
+	}}
+</div>

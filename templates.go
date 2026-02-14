@@ -105,6 +105,12 @@ type (
 		Pages      string
 		Components string
 	}
+
+	executionContext struct {
+		cfg      *Config
+		parent   *executionContext
+		template *template.Template
+	}
 )
 
 func (tm *Templater) With(cfg Config) *Templater {
@@ -122,6 +128,13 @@ func (tm *Templater) WithFuncs(m template.FuncMap) *Templater {
 		return dst
 	}
 	return &cpy
+}
+
+func (tm *Templater) newContext() *executionContext {
+	cfg := tm.cfg
+	return &executionContext{
+		cfg: &cfg,
+	}
 }
 
 func (c *Config) setDefaultsToZeroFields() {
@@ -158,52 +171,7 @@ func (tm *Templater) ExecutePage(name string, kvs ...any) ([]byte, error) {
 		return nil, err
 	}
 
-	return tm.executePage(name, props)
-}
-
-func (tm *Templater) executePage(name string, props map[string]any) ([]byte, error) {
-	// find a matching file, and parse the path parameters
-
-	filename := name + tm.cfg.FileExt
-	pageDir := path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Pages)
-
-	match, err := findBestFilenameMatchInDir(name, tm.cfg.FileExt, pageDir)
-	if err != nil {
-		return nil, err
-	}
-
-	props["PathParams"], _, err = getPathParameters(match, filename)
-	if err != nil {
-		return nil, err
-	}
-
-	// parse the layout template
-
-	layoutFilename := "layout" + tm.cfg.FileExt
-
-	layout, err := template.New(layoutFilename).
-		Funcs(tm.buildFuncMap(name, props)).
-		ParseFiles(path.Join(tm.cfg.Dirs.Base, layoutFilename))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse layout html file: %w", err)
-	}
-
-	// define "body" template
-
-	if b, err := os.ReadFile(path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Pages, match)); err != nil {
-		return nil, fmt.Errorf("failed to read page body html file: %w", err)
-	} else {
-		if _, err := layout.New("body").Parse(string(b)); err != nil {
-			return nil, fmt.Errorf("failed to parse body html template: %w", err)
-		}
-	}
-
-	buf := new(bytes.Buffer)
-	if err := layout.Execute(buf, props); err != nil {
-		return nil, fmt.Errorf("failed to execute html template: %w", err)
-	}
-
-	return buf.Bytes(), nil
+	return tm.newContext().executePage(name, props)
 }
 
 // ExecuteComponent allows for dynamic template lookup and execution
@@ -215,38 +183,7 @@ func (tm *Templater) ExecuteComponent(name string, kvs ...any) ([]byte, error) {
 		return nil, err
 	}
 
-	return tm.executeComponent(name, props)
-}
-
-func (tm *Templater) executeComponent(name string, props map[string]any) ([]byte, error) {
-	filename := name + tm.cfg.FileExt
-	componentDir := path.Join(tm.cfg.Dirs.Base, tm.cfg.Dirs.Components)
-
-	match, err := findBestFilenameMatchInDir(name, tm.cfg.FileExt, componentDir)
-	if err != nil {
-		return nil, err
-	}
-
-	pathParams, _, err := getPathParameters(match, filename)
-	if err != nil {
-		return nil, err
-	}
-
-	props["PathParams"] = pathParams
-
-	t, err := template.New(name).
-		Funcs(tm.buildFuncMap(name, props)).
-		ParseFiles(path.Join(componentDir, match))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse component %s: %w", name, err)
-	}
-
-	buf := new(bytes.Buffer)
-	if err := t.ExecuteTemplate(buf, path.Base(match), props); err != nil {
-		return nil, fmt.Errorf("failed to execute component %s: %w", name, err)
-	}
-
-	return buf.Bytes(), nil
+	return tm.newContext().executeComponent(name, props)
 }
 
 // Execute is a convenience function, executing the first template matching the given name,
@@ -259,11 +196,155 @@ func (tm *Templater) Execute(name string, kvs ...any) ([]byte, error) {
 		return nil, err
 	}
 
-	return tm.execute(name, props)
+	return tm.newContext().execute(name, props)
 }
 
-func (tm *Templater) execute(name string, props map[string]any) ([]byte, error) {
-	b, perr := tm.executePage(name, props)
+func (ec *executionContext) executePage(name string, props map[string]any) ([]byte, error) {
+	// find a matching file, and parse the path parameters
+
+	filename := name + ec.cfg.FileExt
+	pageDir := path.Join(ec.cfg.Dirs.Base, ec.cfg.Dirs.Pages)
+
+	match, err := findBestFilenameMatchInDir(name, ec.cfg.FileExt, pageDir)
+	if err != nil {
+		return nil, err
+	}
+
+	props["PathParams"], _, err = getPathParameters(match, filename)
+	if err != nil {
+		return nil, err
+	}
+
+	// parse the layout template
+
+	layoutFilename := "layout" + ec.cfg.FileExt
+
+	layout, err := template.New(layoutFilename).
+		Funcs(ec.buildFuncMap(name, props)).
+		ParseFiles(path.Join(ec.cfg.Dirs.Base, layoutFilename))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse layout html file: %w", err)
+	}
+
+	// define "body" template
+
+	if b, err := os.ReadFile(path.Join(ec.cfg.Dirs.Base, ec.cfg.Dirs.Pages, match)); err != nil {
+		return nil, fmt.Errorf("failed to read page body html file: %w", err)
+	} else {
+		if _, err := layout.New("body").Parse(string(b)); err != nil {
+			return nil, fmt.Errorf("failed to parse body html template: %w", err)
+		}
+	}
+
+	if ec.template, err = layout.Clone(); err != nil {
+		return nil, fmt.Errorf("failed to clone layout template for component execution: %w", err)
+	}
+
+	buf := new(bytes.Buffer)
+	if err := layout.Execute(buf, props); err != nil {
+		return nil, fmt.Errorf("failed to execute html template: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (ec *executionContext) executeComponent(name string, props map[string]any) ([]byte, error) {
+	filename := name + ec.cfg.FileExt
+	componentDir := path.Join(ec.cfg.Dirs.Base, ec.cfg.Dirs.Components)
+
+	match, err := findBestFilenameMatchInDir(name, ec.cfg.FileExt, componentDir)
+	if err != nil {
+		return nil, err
+	}
+
+	pathParams, _, err := getPathParameters(match, filename)
+	if err != nil {
+		return nil, err
+	}
+
+	props["PathParams"] = pathParams
+
+	cc := &executionContext{
+		cfg:    ec.cfg,
+		parent: ec,
+	}
+
+	t := template.New(name).
+		Funcs(cc.buildFuncMap(name, props))
+	if t, err = t.ParseFiles(path.Join(componentDir, match)); err != nil {
+		return nil, fmt.Errorf("failed to parse component %s: %w", name, err)
+	}
+
+	if known := ec.template; known != nil {
+		cl, err := known.Clone()
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone template: %w", err)
+		}
+		for _, st := range cl.Templates() {
+			if _, err := t.AddParseTree(st.Name(), st.Tree); err != nil {
+				return nil, fmt.Errorf("failed to add tree of known template to component template: %w", err)
+			}
+		}
+	}
+
+	if cc.template, err = t.Clone(); err != nil {
+		return nil, fmt.Errorf("failed to create template clone: %w", err)
+	}
+
+	buf := new(bytes.Buffer)
+	if err := t.ExecuteTemplate(buf, path.Base(match), props); err != nil {
+		return nil, fmt.Errorf("failed to execute component %s: %w", name, err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (ec *executionContext) executeSlot(name string, props map[string]any) ([]byte, error) {
+	cc := &executionContext{
+		cfg:    ec.cfg,
+		parent: ec,
+	}
+
+	t := template.New(name).
+		Funcs(cc.buildFuncMap(name, props))
+
+	if ec.template == nil {
+		// should never get here
+		return nil, fmt.Errorf("parent template not set")
+	}
+
+	cl, err := ec.template.Clone()
+	if err != nil {
+		return nil, fmt.Errorf("failed to clone parent template: %w", err)
+	}
+	for _, st := range cl.Templates() {
+		if _, err := t.AddParseTree(st.Name(), st.Tree); err != nil {
+			return nil, fmt.Errorf("failed to add tree of known template to slot template: %w", err)
+		}
+	}
+
+	if cc.template, err = t.Clone(); err != nil {
+		return nil, fmt.Errorf("failed to create template clone: %w", err)
+	}
+
+	var contentDefinitionName string
+
+	if v, ok := props["#"+name]; !ok {
+		return nil, fmt.Errorf("slot %s content not defined", name)
+	} else if contentDefinitionName, ok = v.(string); !ok {
+		return nil, fmt.Errorf("slot %s definition name is not a string: %T: %v", name, v, v)
+	}
+
+	buf := new(bytes.Buffer)
+	if err := t.ExecuteTemplate(buf, contentDefinitionName, props); err != nil {
+		return nil, fmt.Errorf("failed to execute slot %s: %w", name, err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (ec *executionContext) execute(name string, props map[string]any) ([]byte, error) {
+	b, perr := ec.executePage(name, props)
 	if perr == nil {
 		return b, nil
 	}
@@ -273,7 +354,7 @@ func (tm *Templater) execute(name string, props map[string]any) ([]byte, error) 
 		return nil, perr
 	}
 
-	b, cerr := tm.executeComponent(name, props)
+	b, cerr := ec.executeComponent(name, props)
 	if cerr == nil {
 		return b, nil
 	}
@@ -463,28 +544,46 @@ func getWildcardPathSegmentCombinations(segments []string) [][]string {
 	}
 }
 
-func (tm *Templater) buildFuncMap(name string, props map[string]any) template.FuncMap {
+func (ec *executionContext) buildFuncMap(name string, props map[string]any) template.FuncMap {
 	m := template.FuncMap(map[string]any{
 		// template execution
 		"component": func(name string, kvs ...any) (template.HTML, error) {
-			additionalProps, err := funcs.NewKVSProps(kvs...)
+			cpy, err := addProps(props, kvs...)
 			if err != nil {
 				return "", err
 			}
 
-			cpy := make(map[string]any, len(props))
-			maps.Copy(cpy, props)
-			maps.Copy(cpy, additionalProps)
+			b, err := ec.executeComponent(name, cpy)
+			return template.HTML(b), err
+		},
+		"slot": func(name string, kvs ...any) (template.HTML, error) {
+			cpy, err := addProps(props, kvs...)
+			if err != nil {
+				return "", err
+			}
 
-			b, err := tm.executeComponent(name, cpy)
+			b, err := ec.executeSlot(name, cpy)
 			return template.HTML(b), err
 		},
 	})
 
 	maps.Copy(m, funcs.DefaultMap(name, props))
-	maps.Copy(m, tm.cfg.Funcs(name, props))
+	maps.Copy(m, ec.cfg.Funcs(name, props))
 
 	return m
+}
+
+func addProps(props map[string]any, kvs ...any) (map[string]any, error) {
+	additionalProps, err := funcs.NewKVSProps(kvs...)
+	if err != nil {
+		return nil, err
+	}
+
+	cpy := make(map[string]any, len(props))
+	maps.Copy(cpy, props)
+	maps.Copy(cpy, additionalProps)
+
+	return cpy, nil
 }
 
 func getPathSegments(p string) []string {
