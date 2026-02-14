@@ -1,17 +1,107 @@
 # Templater
 
-A go package that provides HTML template *components*, built on the html/template package.
-
-A *component* is an html template that can be used by any other component or any *page* template.
-
-Unlike the standard practice of compiling templates, compiling template dependencies first, then top-level templates, no template compilation is required. All compilation is done at runtime.
-
-This has the downside of performance costs and error risks due to runtime compilation,
-but has the upside of the ability to modify templates at runtime to gain immediate feedback
-and allowing any template to import any other template.
+A go package that provides HTML template **components** and **slots**, built on [html/template](https://pkg.go.dev/html/template).
 
 
 ## Example
+
+### Components:
+*section.html.tmpl*
+```html
+<section id="{{.ID}}" style="{{.Style}}">
+    <header>
+        {{ slot "section-header" }}
+    </header>
+
+    {{ slot "section-body" }}
+</table>
+```
+
+### Component used:
+*my-shop.html.tmpl*
+```html
+<nav>
+    <a href="/">Home</a>
+    <a href="/contact">Contact</a>
+    <a href="/about">About</a>
+</nav>
+
+{{/* component slot content */}}
+{{ define "my-shop-header" }}
+    <h1>My Shop</h1>
+    <p>The best prices around</p>
+{{ end }}
+
+{{ define "my-shop-body" }}
+    <p>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+    </p>
+    <p>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+    </p>
+{{ end }}
+
+{{/* component used */}}
+{{ component "section" "ID" "my-shop" "Style" "background-color: yellow;" "#section-header" "my-shop-header" "#section-body" "my-shop-body" }}
+```
+
+### Resulting in
+```html
+<nav>
+    <a href="/">Home</a>
+    <a href="/contact">Contact</a>
+    <a href="/about">About</a>
+</nav>
+
+<section id="my-shop" style="background-color: yellow;">
+    <header>
+        <h1>My Shop</h1>
+        <p>The best prices around</p>
+    </header>
+
+    <p>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+    </p>
+    <p>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+    </p>
+</table>
+```
+
+
+## Concepts
+
+A **component** is an html template that can be used in other templates.
+
+A **slot** is a specified place in a component where arbitrary content can be set by the parent component.
+
+
+
+## Key Features
+- serve webpages from template
+- easy template composition
+- minimal setup
+- runtime template editing
+
+## Additional Features
+- path parameters, eg `/pets/{name}`
+    - type parameter support: eg `/store/{storeID.int}`,
+    - automatic injection into templates via "PathParams" argument `<div>Store ID: {{ .PathParams.storeID }}</div>`
+- configurable
+    - template directories
+    - template file extensions
+    - template functions
+- index.html / index.html.tmpl support
+
+Unlike the standard practice of compiling templates, compiling template dependencies first, then top-level templates, no template compilation is required.
+All compilation is done at runtime.
+
+This has the downside of performance costs and error risks due to runtime compilation,
+but has the upside of being able to modify templates at runtime, obtaining faster feedback,
+and allowing any template to import any other template.
+
+
+## Full Example
 
 ```golang
 package main
@@ -101,20 +191,3 @@ func main() {
     </tr>
 </table>
 ```
-
-
-## Key Features
-- serve webpages from template
-- easy template composition
-- minimal setup
-- runtime template editing
-
-## Additional Features
-- path parameters, eg `/pets/{name}`
-    - type parameter support: eg `/store/{storeID.int}`,
-    - automatic injection into templates via "PathParams" argument `<div>Store ID: {{ .PathParams.storeID }}</div>`
-- configurable
-    - template directories
-    - template file extensions
-    - template functions
-- index.html / index.html.tmpl support
